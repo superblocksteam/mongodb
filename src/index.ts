@@ -39,7 +39,7 @@ export default class MongoDBPlugin extends BasePlugin {
       const collection = actionConfiguration.resource;
 
       const params = this.getOpParams(operation, actionConfiguration).map((param) => param.paramValue);
-      if ([MongoDBOperationType.find].includes(operation)) {
+      if ([MongoDBOperationType.find, MongoDBOperationType.aggregate].includes(operation)) {
         const findCursor = (this.runOperation(mdb.collection(collection), operation, params) as unknown) as FindCursor<Document>;
         ret.output = await findCursor.toArray();
       } else {
