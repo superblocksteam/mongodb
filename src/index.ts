@@ -162,7 +162,20 @@ export default class MongoDBPlugin extends BasePlugin {
   }
 
   dynamicProperties(): string[] {
-    return ['pipeline', 'projection', 'query', 'filter', 'sortby', 'field', 'document', 'replacement', 'options', 'update'];
+    return [
+      'pipeline',
+      'projection',
+      'query',
+      'filter',
+      'sortby',
+      'field',
+      'document',
+      'replacement',
+      'options',
+      'update',
+      'skip',
+      'limit'
+    ];
   }
 
   escapeStringProperties(): string[] {
