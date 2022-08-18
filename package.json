@@ -1,6 +1,6 @@
 {
   "name": "@superblocksteam/mongodb",
-  "version": "0.1928.0",
+  "version": "0.1971.0",
   "description": "Superblocks MongoDB Plugin",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
