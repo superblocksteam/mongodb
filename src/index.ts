@@ -36,7 +36,7 @@ export default class MongoDBPlugin extends BasePlugin {
       const operation = actionConfiguration.action as MongoDBOperationType;
       const mdb = client.db(databaseName);
       const ret = new ExecutionOutput();
-      const collection = actionConfiguration.resource;
+      const collection = actionConfiguration.resource ?? '';
 
       const params = this.getOpParams(operation, actionConfiguration).map((param) => param.paramValue);
       if (operation === MongoDBOperationType.listCollections) {
@@ -59,16 +59,15 @@ export default class MongoDBPlugin extends BasePlugin {
 
   getRequest(actionConfiguration: MongoDBActionConfiguration): RawRequest {
     const operation = actionConfiguration.action as MongoDBOperationType;
-    const collection = actionConfiguration.resource;
+    const collection = actionConfiguration.resource ?? '';
     const opParams = this.getOpParams(operation, actionConfiguration);
 
     return this.formatRequest(operation, collection, opParams);
   }
 
   // The MongoDB client expects unspecified properties to be undefined rather than an empty string.
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  private safeJSONParse(json: string): Object {
-    if (isEmpty(json)) {
+  private safeJSONParse(json: string | undefined): Record<string, unknown> | string | undefined {
+    if (!json || isEmpty(json)) {
       return undefined;
     }
     return safeEJSONParse(json, this.logger);
