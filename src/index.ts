@@ -39,7 +39,9 @@ export default class MongoDBPlugin extends BasePlugin {
       const collection = actionConfiguration.resource;
 
       const params = this.getOpParams(operation, actionConfiguration).map((param) => param.paramValue);
-      if ([MongoDBOperationType.find, MongoDBOperationType.aggregate].includes(operation)) {
+      if (operation === MongoDBOperationType.listCollections) {
+        ret.output = await mdb.listCollections().toArray();
+      } else if ([MongoDBOperationType.find, MongoDBOperationType.aggregate].includes(operation)) {
         const findCursor = (this.runOperation(mdb.collection(collection), operation, params) as unknown) as FindCursor<Document>;
         ret.output = await findCursor.toArray();
       } else {
@@ -174,7 +176,8 @@ export default class MongoDBPlugin extends BasePlugin {
       'options',
       'update',
       'skip',
-      'limit'
+      'limit',
+      'resource'
     ];
   }
 
