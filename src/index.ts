@@ -9,7 +9,7 @@ import {
   RawRequest,
   TableType
 } from '@superblocksteam/shared';
-import { BasePlugin, PluginExecutionProps, safeEJSONParse } from '@superblocksteam/shared-backend';
+import { DatabasePlugin, PluginExecutionProps, safeEJSONParse, CreateConnection, DestroyConnection } from '@superblocksteam/shared-backend';
 import { isEmpty } from 'lodash';
 import { Document, FindCursor, MongoClient } from 'mongodb';
 
@@ -19,45 +19,45 @@ interface ParamNameValue {
   paramValue: any;
 }
 
-export default class MongoDBPlugin extends BasePlugin {
-  async execute({
+export default class MongoDBPlugin extends DatabasePlugin {
+  public async execute({
     context,
     datasourceConfiguration,
     actionConfiguration
   }: PluginExecutionProps<MongoDBDatasourceConfiguration>): Promise<ExecutionOutput> {
-    const client = await this.createClient(datasourceConfiguration);
+    const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
+    if (!databaseName) {
+      throw new IntegrationError(`Database name missing`);
+    }
+    const client = await this.createConnection(datasourceConfiguration);
+    const operation = actionConfiguration.action as MongoDBOperationType;
+    const ret = new ExecutionOutput();
+    const collection = actionConfiguration.resource ?? '';
+    const params = this.getOpParams(operation, actionConfiguration).map((param) => param.paramValue);
+
     try {
-      await client.connect();
-
-      const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
-      if (!databaseName) {
-        throw new IntegrationError(`Database name missing`);
-      }
-      const operation = actionConfiguration.action as MongoDBOperationType;
       const mdb = client.db(databaseName);
-      const ret = new ExecutionOutput();
-      const collection = actionConfiguration.resource ?? '';
-
-      const params = this.getOpParams(operation, actionConfiguration).map((param) => param.paramValue);
-      if (operation === MongoDBOperationType.listCollections) {
-        ret.output = await mdb.listCollections().toArray();
-      } else if ([MongoDBOperationType.find, MongoDBOperationType.aggregate].includes(operation)) {
-        const findCursor = (this.runOperation(mdb.collection(collection), operation, params) as unknown) as FindCursor<Document>;
-        ret.output = await findCursor.toArray();
-      } else {
-        ret.output = await this.runOperation(mdb.collection(collection), operation, params);
-      }
+      ret.output = await this.executeQuery(() => {
+        if (operation === MongoDBOperationType.listCollections) {
+          return mdb.listCollections().toArray();
+        } else if ([MongoDBOperationType.find, MongoDBOperationType.aggregate].includes(operation)) {
+          const findCursor = (this.runOperation(mdb.collection(collection), operation, params) as unknown) as FindCursor<Document>;
+          return findCursor.toArray();
+        } else {
+          return this.runOperation(mdb.collection(collection), operation, params);
+        }
+      });
       return ret;
     } catch (err) {
       throw new IntegrationError(`MongoDB operation failed, ${err.message}`);
     } finally {
       if (client) {
-        await client.close();
+        this.destroyConnection(client);
       }
     }
   }
 
-  getRequest(actionConfiguration: MongoDBActionConfiguration): RawRequest {
+  public getRequest(actionConfiguration: MongoDBActionConfiguration): RawRequest {
     const operation = actionConfiguration.action as MongoDBOperationType;
     const collection = actionConfiguration.resource ?? '';
     const opParams = this.getOpParams(operation, actionConfiguration);
@@ -162,7 +162,7 @@ export default class MongoDBPlugin extends BasePlugin {
     return [];
   }
 
-  dynamicProperties(): string[] {
+  public dynamicProperties(): string[] {
     return [
       'pipeline',
       'projection',
@@ -184,18 +184,21 @@ export default class MongoDBPlugin extends BasePlugin {
     return ['pipeline', 'projection', 'query', 'filter', 'sortby', 'field', 'document', 'replacement', 'options', 'update'];
   }
 
-  async metadata(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<DatasourceMetadataDto> {
-    const client = await this.createClient(datasourceConfiguration);
+  public async metadata(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<DatasourceMetadataDto> {
+    const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
+    if (!databaseName) {
+      throw new IntegrationError(`Database name missing`);
+    }
+    const client = await this.createConnection(datasourceConfiguration);
     try {
-      await client.connect();
-
-      const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
-      if (!databaseName) {
-        throw new IntegrationError(`Database name missing`);
-      }
       const mdb = client.db(databaseName);
-      const collectionResults = mdb.listCollections();
-      const collections = await collectionResults.toArray();
+
+      const collectionResults = await this.executeQuery(async () => {
+        return mdb.listCollections();
+      });
+      const collections = await this.executeQuery(async () => {
+        return collectionResults.toArray();
+      });
       const tables =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         collections.map((collection: any) => {
@@ -214,12 +217,18 @@ export default class MongoDBPlugin extends BasePlugin {
       throw new IntegrationError(`MongoDB listCollections operation failed, ${err.message}`);
     } finally {
       if (client) {
-        await client.close();
+        this.destroyConnection(client);
       }
     }
   }
 
-  private async createClient(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<MongoClient> {
+  @DestroyConnection
+  private async destroyConnection(connection: MongoClient): Promise<void> {
+    await connection.close();
+  }
+
+  @CreateConnection
+  private async createConnection(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<MongoClient> {
     if (!datasourceConfiguration) {
       throw new IntegrationError('Datasource not found for MongoDB');
     }
@@ -228,25 +237,17 @@ export default class MongoDBPlugin extends BasePlugin {
       if (!uri) {
         throw new IntegrationError('MongoDB connection URI not specified');
       }
-
       const client = new MongoClient(uri);
+      await client.connect();
       return client;
     } catch (err) {
       throw new IntegrationError(`Failed to created MongoDB client, ${err.message}`);
     }
   }
 
-  async test(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<void> {
-    const client = await this.createClient(datasourceConfiguration);
-    try {
-      await client.connect();
-    } catch (err) {
-      throw new IntegrationError(`Test MongoDB connection failed, ${err.message}`);
-    } finally {
-      if (client) {
-        await client.close();
-      }
-    }
+  public async test(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<void> {
+    const client = await this.createConnection(datasourceConfiguration);
+    this.destroyConnection(client);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
