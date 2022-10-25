@@ -52,7 +52,9 @@ export default class MongoDBPlugin extends DatabasePlugin {
       throw new IntegrationError(`MongoDB operation failed, ${err.message}`);
     } finally {
       if (client) {
-        this.destroyConnection(client);
+        this.destroyConnection(client).catch(() => {
+          // Error handling is done in the decorator
+        });
       }
     }
   }
@@ -217,7 +219,9 @@ export default class MongoDBPlugin extends DatabasePlugin {
       throw new IntegrationError(`MongoDB listCollections operation failed, ${err.message}`);
     } finally {
       if (client) {
-        this.destroyConnection(client);
+        this.destroyConnection(client).catch(() => {
+          // Error handling is done in the decorator
+        });
       }
     }
   }
@@ -247,7 +251,9 @@ export default class MongoDBPlugin extends DatabasePlugin {
 
   public async test(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<void> {
     const client = await this.createConnection(datasourceConfiguration);
-    this.destroyConnection(client);
+    this.destroyConnection(client).catch(() => {
+      // Error handling is done in the decorator
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
