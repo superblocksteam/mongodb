@@ -9,7 +9,13 @@ import {
   RawRequest,
   TableType
 } from '@superblocksteam/shared';
-import { DatabasePlugin, PluginExecutionProps, safeEJSONParse, CreateConnection, DestroyConnection } from '@superblocksteam/shared-backend';
+import {
+  DatabasePluginPooled,
+  PluginExecutionProps,
+  safeEJSONParse,
+  CreateConnection,
+  DestroyConnection
+} from '@superblocksteam/shared-backend';
 import { isEmpty } from 'lodash';
 import { Document, FindCursor, MongoClient } from 'mongodb';
 
@@ -19,17 +25,20 @@ interface ParamNameValue {
   paramValue: any;
 }
 
-export default class MongoDBPlugin extends DatabasePlugin {
-  public async execute({
-    context,
-    datasourceConfiguration,
-    actionConfiguration
-  }: PluginExecutionProps<MongoDBDatasourceConfiguration>): Promise<ExecutionOutput> {
-    const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
+export default class MongoDBPlugin extends DatabasePluginPooled<MongoClient, MongoDBDatasourceConfiguration> {
+  async execute(executionProps: PluginExecutionProps<MongoDBDatasourceConfiguration>): Promise<ExecutionOutput> {
+    const databaseName = executionProps.datasourceConfiguration.authentication?.custom?.databaseName?.value;
     if (!databaseName) {
       throw new IntegrationError(`Database name missing`);
     }
-    const client = await this.createConnection(datasourceConfiguration);
+    return super.execute(executionProps);
+  }
+
+  public async executePooled(
+    { context, datasourceConfiguration, actionConfiguration }: PluginExecutionProps<MongoDBDatasourceConfiguration>,
+    client: MongoClient
+  ): Promise<ExecutionOutput> {
+    const databaseName = datasourceConfiguration.authentication?.custom?.databaseName?.value;
     const operation = actionConfiguration.action as MongoDBOperationType;
     const ret = new ExecutionOutput();
     const collection = actionConfiguration.resource ?? '';
@@ -227,12 +236,12 @@ export default class MongoDBPlugin extends DatabasePlugin {
   }
 
   @DestroyConnection
-  private async destroyConnection(connection: MongoClient): Promise<void> {
+  protected async destroyConnection(connection: MongoClient): Promise<void> {
     await connection.close();
   }
 
   @CreateConnection
-  private async createConnection(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<MongoClient> {
+  protected async createConnection(datasourceConfiguration: MongoDBDatasourceConfiguration): Promise<MongoClient> {
     if (!datasourceConfiguration) {
       throw new IntegrationError('Datasource not found for MongoDB');
     }
