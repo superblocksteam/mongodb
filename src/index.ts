@@ -59,12 +59,6 @@ export default class MongoDBPlugin extends DatabasePluginPooled<MongoClient, Mon
       return ret;
     } catch (err) {
       throw new IntegrationError(`MongoDB operation failed, ${err.message}`);
-    } finally {
-      if (client) {
-        this.destroyConnection(client).catch(() => {
-          // Error handling is done in the decorator
-        });
-      }
     }
   }
 
